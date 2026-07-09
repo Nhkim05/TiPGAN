@@ -86,6 +86,7 @@ def train(args):
     lambda_style = args.lambda_style
     learning_rate = args.learning_rate
     total_iter = args.total_iter
+    device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 
     texture_name = osp.splitext(osp.basename(img_path))[0]
     exp_name = datetime.datetime.now().strftime('%Y-%m-%d_%H-%M-%S')
@@ -104,7 +105,7 @@ def train(args):
                              shuffle=False,
                              num_workers=4,
                              persistent_workers=True,
-                             pin_memory=True,
+                             pin_memory=(device.type == 'cuda'),
                              drop_last=False)
 
     # init networks
@@ -118,9 +119,8 @@ def train(args):
                                   ndf=64,
                                   norm_layer=nn.InstanceNorm2d)
 
-    if torch.cuda.is_available():
-        generator = generator.cuda()
-        discriminator = discriminator.cuda()
+    generator = generator.to(device)
+    discriminator = discriminator.to(device)
 
     # loss functions
     criterionGAN = GANLoss(use_lsgan=False,
@@ -128,8 +128,8 @@ def train(args):
                            target_real_label=1.0,
                            target_fake_label=0.0)
     criterionL1 = torch.nn.L1Loss()
-    criterionStyle = StyleLoss()
-    criterionHistogram = HistogramLoss()
+    criterionStyle = StyleLoss(device=device)
+    criterionHistogram = HistogramLoss(device=device)
 
     # Optimizers
     optimizer_G = torch.optim.Adam(generator.parameters(),
@@ -148,7 +148,7 @@ def train(args):
     # resume-from
     if resume_from is not None:
         assert osp.isfile(resume_from) and resume_from.endswith('.pth')
-        state_dict = torch.load(resume_from)
+        state_dict = torch.load(resume_from, map_location=device)
         generator.load_state_dict(state_dict['generator'])
         discriminator.load_state_dict(state_dict['discriminator'])
         optimizer_G.load_state_dict(state_dict['optim_G'])
@@ -170,9 +170,8 @@ def train(args):
         for _, batch_data in enumerate(data_loader):
             real_A_128 = batch_data['A']
             real_B = batch_data['B']
-            if torch.cuda.is_available():
-                real_A_128 = real_A_128.cuda()
-                real_B = real_B.cuda()
+            real_A_128 = real_A_128.to(device)
+            real_B = real_B.to(device)
 
             fake_B = generator(real_A_128)
             real_A = transforms.RandomResizedCrop(256)(real_A_128)

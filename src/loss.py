@@ -16,7 +16,7 @@ class HistogramLoss(nn.Module):
                  method='inverse-quadratic',
                  sigma=0.02,
                  intensity_scale=True,
-                 device='cuda'):
+                 device=None):
         """ Computes the RGB-uv histogram feature of a given image.
         Args:
             h: histogram dimension size (scalar). The default value is 64.
@@ -43,7 +43,8 @@ class HistogramLoss(nn.Module):
         super(HistogramLoss, self).__init__()
         self.h = h
         self.insz = insz
-        self.device = device
+        self.device = device or torch.device('cuda' if torch.cuda.is_available()
+                             else 'cpu')
         self.resizing = resizing
         self.method = method
         self.intensity_scale = intensity_scale
@@ -264,28 +265,28 @@ class GANLoss(nn.Module):
 
     def __call__(self, input, target_is_real) -> torch.Tensor:
         target_tensor = self.get_target_tensor(input, target_is_real)
-        target_tensor = target_tensor.cuda()
-        # print(target_tensor)
+        target_tensor = target_tensor.to(input.device)
         return self.loss(input, target_tensor)
 
 
 class StyleLoss(nn.Module):
-    def __init__(self):
+    def __init__(self, device=None):
         super(StyleLoss, self).__init__()
+        self.device = device or torch.device('cuda' if torch.cuda.is_available()
+                                             else 'cpu')
         self.vgg = VGGModel()
-        self.vgg.load_state_dict(torch.load('ckpt/vgg_conv.pth'))
+        self.vgg.load_state_dict(
+            torch.load('ckpt/vgg_conv.pth', map_location=self.device))
         for param in self.vgg.parameters():
             param.requires_grad = False
-        if torch.cuda.is_available():
-            self.vgg.cuda()
+        self.vgg.to(self.device)
 
     def __call__(self, fake_B, real_B) -> torch.Tensor:
         style_layers = ['r11', 'r21', 'r31', 'r41', 'r51']
         # self.content_layers = ['r42']
         loss_layers = style_layers
         loss_fns = [GramMSELoss()] * len(style_layers)
-        if torch.cuda.is_available():
-            loss_fns = [loss_fn.cuda() for loss_fn in loss_fns]
+        loss_fns = [loss_fn.to(self.device) for loss_fn in loss_fns]
         # vgg = VGGModel()
         # vgg.load_state_dict(torch.load(os.getcwd() + '/Models/' + 'vgg_conv.pth'))
         # self.vgg = torchvision.models.vgg19(pretrained=True)
@@ -308,5 +309,4 @@ class StyleLoss(nn.Module):
             weights[a] * loss_fns[a](A, targets[a]) for a, A in enumerate(out)
         ]
         loss = sum(layer_losses)
-        style_loss = loss.type(torch.FloatTensor)
-        return style_loss
+        return loss

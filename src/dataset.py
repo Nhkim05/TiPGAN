@@ -1,4 +1,6 @@
+import os
 import random
+from glob import glob
 
 import torch.utils.data as data
 import torchvision.transforms as transforms
@@ -19,10 +21,26 @@ class HalfDataset(data.Dataset):
         super(HalfDataset, self).__init__()
 
         self.split_type = split_type
-        self.paths = [img_path]
+        self.paths = self._resolve_paths(img_path)
         self.size = len(self.paths)
         self.transform = get_transform()
         self.fineSize = fineSize
+
+    def _resolve_paths(self, img_path):
+        if os.path.isdir(img_path):
+            image_patterns = ['*.jpg', '*.jpeg', '*.png', '*.bmp', '*.webp']
+            paths = []
+            for pattern in image_patterns:
+                paths.extend(glob(os.path.join(img_path, pattern)))
+                paths.extend(glob(os.path.join(img_path, pattern.upper())))
+            paths = sorted(set(paths))
+            if len(paths) == 0:
+                raise ValueError(f'No image files found in directory: {img_path}')
+            return paths
+
+        if not os.path.isfile(img_path):
+            raise ValueError(f'Input path is not a valid file or directory: {img_path}')
+        return [img_path]
 
     def __getitem__(self, index):
         path = self.paths[index % self.size]
